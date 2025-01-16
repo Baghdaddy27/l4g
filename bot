@@ -86,7 +86,8 @@ async def lfg(interaction: discord.Interaction, game: str, console: str = None):
             title="Looking For Group",
             description=(
                 f"{interaction.user.mention} is looking for a group on {matching_game_role.mention}"
-                f"{f' for {matching_console_role.mention}' if matching_console_role else ''}.\n\n"
+                f"{f' for {matching_console_role.mention}' if matching_console_role else ''}.
+\n"
                 f"Join the voice channel: {temp_channel.mention}"
             ),
             color=discord.Color.blue()
