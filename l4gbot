@@ -1,0 +1,126 @@
+import discord
+from discord.ext import commands
+import os
+from flask import Flask
+from threading import Thread
+
+# Bot setup
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Flask keep-alive server
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+Thread(target=run).start()
+
+# Helper function to extract role from mention or name
+def get_role_from_input(input_str: str, guild: discord.Guild):
+    if input_str.startswith("<@&") and input_str.endswith(">"):
+        role_id = int(input_str[3:-1])
+        return guild.get_role(role_id)
+    return discord.utils.find(lambda r: r.name.lower() == input_str.lower(), guild.roles)
+
+# Slash Command: LFG
+@bot.tree.command(name="lfg", description="Create a Looking For Group post")
+async def lfg(interaction: discord.Interaction, game: str, console: str = None):
+    try:
+        if not interaction.guild:
+            await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
+            return
+
+        guild = interaction.guild
+        category_name = "Looking4Group"
+
+        # Ensure the "Looking4Group" category exists
+        category = discord.utils.get(guild.categories, name=category_name)
+        if not category:
+            category = await guild.create_category_channel(category_name)
+
+        # Find the game role
+        matching_game_role = get_role_from_input(game, guild)
+        if matching_game_role is None:
+            await interaction.response.send_message(
+                f"No matching game role found for '{game}'. Please create the role or try again with an existing game role.",
+                ephemeral=True
+            )
+            return
+
+        # Find the console role (if provided)
+        matching_console_role = None
+        if console:
+            matching_console_role = get_role_from_input(console, guild)
+            if matching_console_role is None:
+                await interaction.response.send_message(
+                    f"No matching console role found for '{console}'. Please create the role or try again with an existing console role.",
+                    ephemeral=True
+                )
+                return
+
+        # Create a temporary voice channel
+        temp_channel_name = f"LFG: {matching_game_role.name} - {matching_console_role.name if matching_console_role else 'No Console'}"
+        temp_channel = await guild.create_voice_channel(name=temp_channel_name, category=category)
+
+        # Create and send the embed message
+        embed = discord.Embed(
+            title="Looking For Group",
+            description=(
+                f"{interaction.user.mention} is looking for a group on {matching_game_role.name}"
+                f"{f' for {matching_console_role.name}' if matching_console_role else ''}.\n\n"
+                f"Join the voice channel: {temp_channel.mention}"
+            ),
+            color=discord.Color.blue()
+        )
+        await interaction.response.send_message(embed=embed)
+
+    except discord.HTTPException as e:
+        await interaction.response.send_message(
+            "An error occurred while processing your request. Please try again later.",
+            ephemeral=True
+        )
+        with open("error.log", "a") as f:
+            f.write(f"HTTPException: {e}\n")
+    except Exception as e:
+        with open("error.log", "a") as f:
+            f.write(f"Unhandled exception in /lfg command: {e}\n")
+        raise e
+
+# Reconnection logic
+@bot.event
+async def on_disconnect():
+    print("Bot disconnected. Attempting to reconnect...")
+
+@bot.event
+async def on_resumed():
+    print("Bot successfully reconnected!")
+
+# Error handling for unhandled events
+@bot.event
+async def on_error(event, *args, **kwargs):
+    with open("error.log", "a") as f:
+        f.write(f"Unhandled exception in {event}: {args}\n")
+
+# Event: Bot is ready
+@bot.event
+async def on_ready():
+    await bot.tree.sync()
+    # Set a custom bot status
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="/lfg"))
+    print(f'{bot.user.name} is online and ready!')
+
+# Run the bot
+bot_token = os.getenv("BOT_TOKEN")
+if not bot_token:
+    raise ValueError("BOT_TOKEN is not set in the environment.")
+try:
+    bot.run(bot_token)
+except Exception as e:
+    with open("error.log", "a") as f:
+        f.write(f"Bot crashed: {e}\n")
+    raise e
