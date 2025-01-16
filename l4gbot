@@ -36,9 +36,9 @@ async def lfg(interaction: discord.Interaction, game: str, console: str = None):
             return
 
         guild = interaction.guild
-        category_name = "Looking4Group"
+        category_name = "Temporary Channels"
 
-        # Ensure the "Looking4Group" category exists
+        # Ensure the "Temporary Channels" category exists
         category = discord.utils.get(guild.categories, name=category_name)
         if not category:
             category = await guild.create_category_channel(category_name)
@@ -63,8 +63,17 @@ async def lfg(interaction: discord.Interaction, game: str, console: str = None):
                 )
                 return
 
-        # Create a temporary voice channel
+        # Check if a temporary voice channel already exists
         temp_channel_name = f"LFG: {matching_game_role.name} - {matching_console_role.name if matching_console_role else 'No Console'}"
+        existing_channel = discord.utils.get(category.voice_channels, name=temp_channel_name)
+        if existing_channel:
+            await interaction.response.send_message(
+                f"A voice channel with the name '{temp_channel_name}' already exists: {existing_channel.mention}",
+                ephemeral=True
+            )
+            return
+
+        # Create the temporary voice channel
         temp_channel = await guild.create_voice_channel(name=temp_channel_name, category=category)
 
         # Create and send the embed message
