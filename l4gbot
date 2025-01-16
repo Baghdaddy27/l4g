@@ -3,6 +3,7 @@ from discord.ext import commands
 import os
 from flask import Flask
 from threading import Thread
+import asyncio
 
 # Bot setup
 intents = discord.Intents.all()
@@ -76,17 +77,32 @@ async def lfg(interaction: discord.Interaction, game: str, console: str = None):
         # Create the temporary voice channel
         temp_channel = await guild.create_voice_channel(name=temp_channel_name, category=category)
 
+        # Move the user to the new voice channel if they are in a voice channel
+        if interaction.user.voice and interaction.user.voice.channel:
+            await interaction.user.move_to(temp_channel)
+
         # Create and send the embed message
         embed = discord.Embed(
             title="Looking For Group",
             description=(
-                f"{interaction.user.mention} is looking for a group on {matching_game_role.name}"
-                f"{f' for {matching_console_role.name}' if matching_console_role else ''}.\n\n"
+                f"{interaction.user.mention} is looking for a group on {matching_game_role.mention}"
+                f"{f' for {matching_console_role.mention}' if matching_console_role else ''}.\n\n"
                 f"Join the voice channel: {temp_channel.mention}"
             ),
             color=discord.Color.blue()
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, allowed_mentions=discord.AllowedMentions(roles=True))
+
+        # Function to check if the channel is empty
+        def is_channel_empty():
+            return len(temp_channel.members) == 0
+
+        # Wait for the channel to become empty and then delete it after 60 seconds
+        while True:
+            await asyncio.sleep(60)
+            if is_channel_empty():
+                await temp_channel.delete()
+                break
 
     except discord.HTTPException as e:
         await interaction.response.send_message(
